@@ -1,6 +1,6 @@
 [project]
 name = "vapourlint"
-version = "0.0.1"
+version = "0.0.2.dev0"
 description = "A static analyzer for VapourSynth scripts"
 readme = "README.md"
 license = "MIT"

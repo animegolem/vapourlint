@@ -6,15 +6,20 @@ Nothing is executed. The core is recognised in these forms:
 - ``core`` after ``from vapoursynth import core`` (any alias);
 - a name assigned from one of those, or from the legacy ``vs.get_core()``.
 
-Method-form calls such as ``clip.std.Trim(...)`` are not reported yet: telling
-them apart from ordinary attribute calls needs the installed plugin catalog.
+Method-form calls such as ``clip.std.Trim(...)`` are reported only when a
+plugin catalog is supplied: without it they cannot be told apart from
+ordinary attribute calls. With it, ``x.ns.fn(...)`` counts when ``ns.fn`` is
+an installed function whose first parameter takes a clip.
 """
 
 from __future__ import annotations
 
 import ast
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from .catalog import Catalog
 
 VAPOURSYNTH = "vapoursynth"
 
@@ -32,10 +37,21 @@ class Call:
     line: int
     column: int  # 1-based, in characters
     strings: list[str] = field(default_factory=list)
+    form: Literal["core", "method"] = "core"
 
     @property
     def name(self) -> str:
         return f"{self.namespace}.{self.function}"
+
+
+@dataclass(frozen=True)
+class CallSite:
+    """A call plus what it supplies, for the checks."""
+
+    call: Call
+    positional: int
+    keywords: tuple[str, ...]
+    starred: bool  # *args or **kwargs: what is supplied is unknown
 
 
 @dataclass(frozen=True)
@@ -59,21 +75,30 @@ class Manifest:
         }
 
 
-def analyze(source: str, filename: str = "<script>") -> Manifest:
+def analyze(source: str, filename: str = "<script>", catalog: Catalog | None = None) -> Manifest:
     """Build the manifest for one script. Raises SyntaxError for invalid Python."""
-    tree = ast.parse(source, filename=filename)
-    visitor = _Visitor(source.splitlines())
-    visitor.visit(tree)
-    return Manifest(visitor.imports, visitor.calls)
+    visitor = _visit(source, filename, catalog)
+    return Manifest(visitor.imports, [site.call for site in visitor.sites])
+
+
+def call_sites(source: str, filename: str = "<script>", catalog: Catalog | None = None) -> list[CallSite]:
+    return _visit(source, filename, catalog).sites
+
+
+def _visit(source: str, filename: str, catalog: Catalog | None) -> _Visitor:
+    visitor = _Visitor(source.splitlines(), catalog)
+    visitor.visit(ast.parse(source, filename=filename))
+    return visitor
 
 
 class _Visitor(ast.NodeVisitor):
-    def __init__(self, lines: list[str]) -> None:
+    def __init__(self, lines: list[str], catalog: Catalog | None) -> None:
         self.lines = lines
+        self.catalog = catalog
         self.modules: set[str] = set()  # names bound to the vapoursynth module
         self.cores: set[str] = set()  # names bound to the core
         self.imports: list[Import] = []
-        self.calls: list[Call] = []
+        self.sites: list[CallSite] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -99,15 +124,24 @@ class _Visitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
-        if (
-            isinstance(func, ast.Attribute)
-            and isinstance(func.value, ast.Attribute)
-            and self._is_core(func.value.value)
-        ):
-            arguments = [*node.args, *(k.value for k in node.keywords)]
-            strings = [a.value for a in arguments if isinstance(a, ast.Constant) and isinstance(a.value, str)]
-            self.calls.append(Call(func.value.attr, func.attr, node.lineno, self._column(node), strings))
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute):
+            namespace, function, receiver = func.value.attr, func.attr, func.value.value
+            if self._is_core(receiver):
+                self._record(node, namespace, function, "core")
+            elif self.catalog is not None and not self._is_module(receiver):
+                found = self.catalog.get(namespace, function)
+                if found is not None and found.on_clips:
+                    self._record(node, namespace, function, "method")
         self.generic_visit(node)
+
+    def _record(self, node: ast.Call, namespace: str, function: str, form: Literal["core", "method"]) -> None:
+        arguments = [*node.args, *(k.value for k in node.keywords)]
+        strings = [a.value for a in arguments if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+        call = Call(namespace, function, node.lineno, self._column(node), strings, form)
+        starred = any(isinstance(a, ast.Starred) for a in node.args) or any(k.arg is None for k in node.keywords)
+        keywords = tuple(k.arg for k in node.keywords if k.arg is not None)
+        positional = sum(1 for a in node.args if not isinstance(a, ast.Starred))
+        self.sites.append(CallSite(call, positional, keywords, starred))
 
     def _is_core(self, expr: ast.expr) -> bool:
         if isinstance(expr, ast.Name):
