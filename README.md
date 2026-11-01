@@ -8,8 +8,8 @@ Python linters see neither plugins nor clip formats. VapourLint checks a
 script using what VapourSynth itself knows.
 
 **Status: early.** The released 0.0.1 has the `manifest` command. The
-development version adds `check` and `catalog`. The checks listed under
-*Planned* do not exist yet.
+development version adds `check`, `catalog` and `graph`. The checks listed
+under *Planned* do not exist yet.
 
 ## Install
 
@@ -28,6 +28,7 @@ a VapourSynth installation (see *Catalog*).
 vapourlint manifest script.vpy   # imports and plugin calls, nothing run
 vapourlint check script.vpy      # static rules, plus catalog rules when VapourSynth is found
 vapourlint catalog               # the installed plugins VapourLint sees
+vapourlint graph script.vpy      # each line's clips (runs the script's Python)
 ```
 
 Each takes `--json` for machine-readable output.
@@ -96,6 +97,53 @@ clip = core.std.Trim(first=0)  # vapourlint: ignore[missing-argument]
 clip = core.std.Trimm(clip)    # vapourlint: ignore
 ```
 
+### graph, and check --graph
+
+`manifest` and `check` never run the script. `graph` and `check --graph` do:
+they execute the script's Python in a separate VapourSynth interpreter, one
+top-level statement at a time, to build its graph and see what each line
+produces. Run them only on scripts you would run yourself.
+
+```text
+episode.vpy  (VapourSynth R81)
+  line  name             clip
+     4  src              1280x720 YUV420P8 24000/1001, 480 frames
+     5  clip             640x360 YUV420P8 24000/1001, 480 frames
+     7  rgb              640x360 RGB24 24000/1001, 480 frames
+     4  source bs.VideoSource: stand-in, file not found; declared format, fps, frames, height, width
+```
+
+Then frame 0 of each clip is rendered in script order, so a render-time
+failure lands on the line that introduced it (`--no-render` skips this).
+
+**Sources are stand-ins by default.** Opening real media can take long, and
+some source filters write index files next to it. Each source call is
+replaced by a blank clip; `--media` opens real files instead. Declare a
+source's format in a comment on its line, or on a line of its own as the
+default for every source:
+
+```python
+src = core.bs.VideoSource("ep01.mkv")  # vapourlint: source 1920x1080 yuv420p10 24000/1001 frames=34046 matrix=709 range=limited
+```
+
+What nobody declares is assumed, and VapourLint never reports an error that
+may come from an assumed value. Such findings are shown as info, naming the
+declaration that would check them.
+
+**Graph rules:**
+
+| Rule | Severity | Finds |
+|---|---|---|
+| `graph-error` | error | a line VapourSynth refuses to build (mismatched formats or sizes, a Trim past the end, ...) |
+| `matrix-unspecified` | error | a YUV-to-RGB conversion with no matrix known: it builds, then fails when a frame is rendered |
+| `render-error` | error | frame 0 of a line's clip fails to render for another reason |
+| `slice-past-end` | warning | `clip[a:b]` with a literal end past the clip's length, which VapourSynth clamps silently |
+| `source-stand-in` | info | a source was replaced by a stand-in, and what that leaves unchecked |
+
+Limits: a compound statement (`if`, `for`, `with`) records its clips at its
+first line; clips kept only inside lists or dicts are not recorded. The pass
+stops after `--timeout` seconds (default 60) and stops the whole process.
+
 ### catalog
 
 `check` and `catalog` read plugin signatures from a running VapourSynth
@@ -125,11 +173,8 @@ vapourlint check script.vpy --catalog catalog.json
 
 ## Planned
 
-- **Graph pass:** build the script's graph without rendering it and record
-  each line's clip format, size, length and frame rate, with stand-ins for
-  missing source media. This enables checks such as: YUV converted to RGB
-  with no matrix set; a clip of the wrong bit depth fed to a filter; frame
-  ranges outside their clip.
+- **Format requirements:** a clip of the wrong bit depth or family fed to a
+  filter that builds anyway but misbehaves.
 - **Configuration** in `[tool.vapourlint]`.
 - **Diagnostics over LSP**, for any editor, merging BasedPyright's when it
   is installed.
