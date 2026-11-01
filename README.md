@@ -18,14 +18,15 @@ pip install vapourlint
 ```
 
 VapourLint has no dependencies and never imports VapourSynth itself.
-`manifest` works without VapourSynth; `check` and `catalog` need a
-VapourSynth installation to read plugin signatures from (see *Catalog*).
+`manifest` and the static rules of `check` work without VapourSynth. The
+catalog rules of `check`, and `catalog` itself, read plugin signatures from
+a VapourSynth installation (see *Catalog*).
 
 ## Commands
 
 ```sh
 vapourlint manifest script.vpy   # imports and plugin calls, nothing run
-vapourlint check script.vpy      # check plugin calls against the catalog
+vapourlint check script.vpy      # static rules, plus catalog rules when VapourSynth is found
 vapourlint catalog               # the installed plugins VapourLint sees
 ```
 
@@ -54,25 +55,39 @@ from the legacy `vs.get_core()`.
 
 ### check
 
-Checks every plugin call against the installed plugins' signatures, without
-running the script:
-
-| Rule | Finds |
-|---|---|
-| `unknown-function` | `core.std.Trimm(...)`: the namespace exists but has no such function |
-| `unknown-argument` | `clip.std.Trim(frist=0)`: a keyword the function does not declare |
-| `missing-argument` | `core.std.Trim(first=0)`: a required parameter nobody supplies |
+Reports problems without running the script. Each finding has a severity:
+**error**, **warning** or **info**.
 
 ```text
-episode.vpy:4:7: unknown-argument: std.Trim has no argument 'frist'
-episode.vpy:5:7: unknown-function: resize has no function Bicubik
+episode.vpy:4:7: error: unknown-argument: std.Trim has no argument 'frist'
+episode.vpy:9:7: warning: range-literal: _Range=1 means full: _Range is numbered the other way from _ColorRange; write vs.RANGE_FULL
 ```
+
+**Static rules** read the script's text only; they need nothing installed:
+
+| Rule | Severity | Finds |
+|---|---|---|
+| `callback-signature` | error | a `std.ModifyFrame` selector that cannot take the keywords `n` and `f`, or a `std.FrameEval` eval that cannot take `n` (and `f` with `prop_src`). These fail only when a frame is rendered |
+| `late-global` | warning | a frame callback that reads a module-level name the script assigns again later: frames render after the script finishes, so every frame sees the later value |
+| `range-literal` | warning | `_Range` set to a bare 0 or 1. `_Range` is numbered the other way from the deprecated `_ColorRange` (0 = limited); write `vs.RANGE_LIMITED` or `vs.RANGE_FULL` |
+| `replace-ranges-convention` | warning | `replace_ranges` or `rfs` without `exclusive=`: its default is inclusive and can be switched process-wide |
+| `deprecated-prop` | info | `_ColorRange`, which VapourSynth translates to `_Range` |
+
+**Catalog rules** check every plugin call against the installed plugins'
+signatures:
+
+| Rule | Severity | Finds |
+|---|---|---|
+| `unknown-function` | error | `core.std.Trimm(...)`: the namespace exists but has no such function |
+| `unknown-argument` | error | `clip.std.Trim(frist=0)`: a keyword the function does not declare |
+| `missing-argument` | error | `core.std.Trim(first=0)`: a required parameter nobody supplies |
 
 Method-form calls (`clip.std.Trim(...)`) are checked too: the clip fills
 the function's first parameter, as VapourSynth does. A call using `*args`
 or `**kwargs` is not checked for missing arguments, and a function that
 accepts arbitrary keywords (such as `std.SetFrameProps`) is not checked for
-unknown ones.
+unknown ones. When no VapourSynth installation is found, `check` says so on
+stderr and runs the static rules alone.
 
 Silence a finding on its line:
 
@@ -104,9 +119,9 @@ vapourlint check script.vpy --catalog catalog.json
 
 | Status | Meaning |
 |---|---|
-| 0 | No findings |
-| 1 | Findings (`check` only) |
-| 2 | VapourLint could not do its job: unreadable file, invalid Python, no catalog |
+| 0 | No errors or warnings (info findings never fail a run) |
+| 1 | At least one error or warning (`check` only) |
+| 2 | VapourLint could not do its job: unreadable file, invalid Python, or a catalog asked for with `--python` or `--catalog` that could not be read |
 
 ## Planned
 
@@ -114,8 +129,7 @@ vapourlint check script.vpy --catalog catalog.json
   each line's clip format, size, length and frame rate, with stand-ins for
   missing source media. This enables checks such as: YUV converted to RGB
   with no matrix set; a clip of the wrong bit depth fed to a filter; frame
-  ranges outside their clip; `replace_ranges` called without an explicit
-  range convention.
+  ranges outside their clip.
 - **Configuration** in `[tool.vapourlint]`.
 - **Diagnostics over LSP**, for any editor, merging BasedPyright's when it
   is installed.

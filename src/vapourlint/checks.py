@@ -1,6 +1,6 @@
-"""Checks that need the plugin catalog but do not run the script.
+"""``vapourlint check``: static rules always, catalog rules when a catalog exists.
 
-Rules (the names are what ``# vapourlint: ignore[...]`` takes):
+Catalog rules (the names are what ``# vapourlint: ignore[...]`` takes):
 
 - ``unknown-function``: ``core.ns.fn`` where ``ns`` is installed but has no ``fn``;
 - ``unknown-argument``: a keyword the function does not declare;
@@ -9,31 +9,34 @@ Rules (the names are what ``# vapourlint: ignore[...]`` takes):
 A call with ``*args`` or ``**kwargs`` is not checked for missing arguments,
 and a function whose signature accepts any keyword is not checked for
 unknown ones. A method-form call supplies the function's first parameter.
+The static rules are in ``static_rules``; neither layer runs the script.
 """
 
 from __future__ import annotations
 
-import io
-import re
-import tokenize
-from dataclasses import dataclass
+from collections.abc import Iterable
 
 from .catalog import Catalog
+from .diagnostics import Diagnostic, finalize
 from .manifest import call_sites
-
-IGNORE = re.compile(r"vapourlint:\s*ignore(?:\[([^\]]*)\])?")
-
-
-@dataclass(frozen=True, order=True)
-class Diagnostic:
-    line: int
-    column: int
-    code: str
-    message: str
+from .static_rules import static_diagnostics
 
 
-def check(source: str, catalog: Catalog, filename: str = "<script>") -> list[Diagnostic]:
-    """Raises SyntaxError for invalid Python."""
+def check(
+    source: str,
+    catalog: Catalog | None = None,
+    filename: str = "<script>",
+    extra: Iterable[Diagnostic] = (),
+) -> list[Diagnostic]:
+    """All findings for one script. ``extra`` takes findings from other layers. Raises SyntaxError."""
+    found = static_diagnostics(source, filename)
+    if catalog is not None:
+        found += catalog_diagnostics(source, catalog, filename)
+    found += extra
+    return finalize(source, found)
+
+
+def catalog_diagnostics(source: str, catalog: Catalog, filename: str = "<script>") -> list[Diagnostic]:
     found: list[Diagnostic] = []
     for site in call_sites(source, filename, catalog):
         call = site.call
@@ -55,22 +58,4 @@ def check(source: str, catalog: Catalog, filename: str = "<script>") -> list[Dia
         missing = [p.python_name for p in function.params if not p.optional and p.name not in supplied]
         if missing:
             found.append(Diagnostic(*where, "missing-argument", f"{call.name} needs {', '.join(missing)}"))
-    ignored = _ignored(source)
-    return sorted(d for d in found if not _silenced(d, ignored))
-
-
-def _ignored(source: str) -> dict[int, set[str] | None]:
-    """Line -> codes ignored on it (None: every code)."""
-    lines: dict[int, set[str] | None] = {}
-    for token in tokenize.generate_tokens(io.StringIO(source).readline):
-        if token.type == tokenize.COMMENT and (match := IGNORE.search(token.string)):
-            codes = match.group(1)
-            lines[token.start[0]] = {c.strip() for c in codes.split(",") if c.strip()} if codes else None
-    return lines
-
-
-def _silenced(diagnostic: Diagnostic, ignored: dict[int, set[str] | None]) -> bool:
-    if diagnostic.line not in ignored:
-        return False
-    codes = ignored[diagnostic.line]
-    return codes is None or diagnostic.code in codes
+    return found

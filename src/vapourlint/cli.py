@@ -1,7 +1,7 @@
 """Command line.
 
 - ``vapourlint manifest SCRIPT``: imports and plugin calls, without running anything.
-- ``vapourlint check SCRIPT``: catalog-backed checks; exit 0 clean, 1 findings.
+- ``vapourlint check SCRIPT``: static and catalog-backed checks; exit 0 clean, 1 errors or warnings.
 - ``vapourlint catalog``: the installed plugins, as VapourLint sees them.
 
 Exit status 2 means VapourLint could not do its job (unreadable file,
@@ -105,7 +105,14 @@ def _manifest(args: argparse.Namespace) -> int:
 
 def _check(args: argparse.Namespace) -> int:
     source = _read(args.script)
-    catalog, _ = _load_catalog(args)
+    catalog: Catalog | None = None
+    if args.catalog is not None or args.python:
+        catalog, _ = _load_catalog(args)  # asked for explicitly: failing is an error
+    else:
+        try:
+            catalog = Catalog.from_json(discover_data())
+        except CatalogUnavailable as error:
+            print(f"vapourlint: only static rules ran ({error})", file=sys.stderr)
     try:
         diagnostics = check(source, catalog, str(args.script))
     except SyntaxError as error:
@@ -114,14 +121,14 @@ def _check(args: argparse.Namespace) -> int:
         report = {
             "vapourlint": __version__,
             "script": str(args.script),
-            "vapoursynth": catalog.vapoursynth,
+            "vapoursynth": catalog.vapoursynth if catalog else None,
             "diagnostics": [vars(d) for d in diagnostics],
         }
         print(json.dumps(report, indent=2, ensure_ascii=False))
     else:
         for d in diagnostics:
-            print(f"{args.script}:{d.line}:{d.column}: {d.code}: {d.message}")
-    return 1 if diagnostics else 0
+            print(f"{args.script}:{d.line}:{d.column}: {d.severity}: {d.code}: {d.message}")
+    return 1 if any(d.counts for d in diagnostics) else 0
 
 
 def _catalog(args: argparse.Namespace) -> int:

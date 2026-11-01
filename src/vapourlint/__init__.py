@@ -1,7 +1,8 @@
 """VapourLint: a static analyzer for VapourSynth scripts."""
 
 from .catalog import Catalog, CatalogUnavailable, discover
-from .checks import Diagnostic, check
+from .checks import check
+from .diagnostics import Diagnostic
 from .manifest import Call, Import, Manifest, analyze
 
 __version__ = "0.0.2.dev0"

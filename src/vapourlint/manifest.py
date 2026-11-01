@@ -52,6 +52,7 @@ class CallSite:
     positional: int
     keywords: tuple[str, ...]
     starred: bool  # *args or **kwargs: what is supplied is unknown
+    offset: int  # the AST's col_offset (UTF-8 bytes), to find this call's node again
 
 
 @dataclass(frozen=True)
@@ -141,7 +142,7 @@ class _Visitor(ast.NodeVisitor):
         starred = any(isinstance(a, ast.Starred) for a in node.args) or any(k.arg is None for k in node.keywords)
         keywords = tuple(k.arg for k in node.keywords if k.arg is not None)
         positional = sum(1 for a in node.args if not isinstance(a, ast.Starred))
-        self.sites.append(CallSite(call, positional, keywords, starred))
+        self.sites.append(CallSite(call, positional, keywords, starred, node.col_offset))
 
     def _is_core(self, expr: ast.expr) -> bool:
         if isinstance(expr, ast.Name):

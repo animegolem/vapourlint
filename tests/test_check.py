@@ -115,7 +115,7 @@ def test_cli_check_exit_codes_and_output(tmp_path, capsys):
     dirty.write_text(HEADER + "core.std.Trim(clip, frist=0)\n")
     assert main(["check", str(clean), "--catalog", str(FIXTURE)]) == 0
     assert main(["check", str(dirty), "--catalog", str(FIXTURE)]) == 1
-    assert f"{dirty}:3:1: unknown-argument: std.Trim has no argument 'frist'" in capsys.readouterr().out
+    assert f"{dirty}:3:1: error: unknown-argument: std.Trim has no argument 'frist'" in capsys.readouterr().out
 
 
 def test_cli_check_json(tmp_path, capsys):
@@ -139,4 +139,4 @@ def test_cli_against_the_real_core(tmp_path, capsys):
     script.write_text(HEADER + "clip = clip.std.Trim(frist=0)\nclip = core.resize.Bicubic(clip, 640, 360)\n")
     assert main(["check", str(script), "--python", str(ENGINE_PYTHON)]) == 1
     out = capsys.readouterr().out
-    assert "3:8: unknown-argument" in out and out.count("\n") == 1
+    assert "3:8: error: unknown-argument" in out and out.count("\n") == 1
