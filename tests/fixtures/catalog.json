@@ -1,0 +1,34 @@
+{
+  "vapoursynth": 81,
+  "python": "fixture",
+  "plugins": [
+    {
+      "namespace": "std",
+      "identifier": "com.vapoursynth.std",
+      "name": "VapourSynth Core Functions",
+      "functions": [
+        {"name": "Trim", "signature": "clip:vnode:all;first:int:opt;last:int:opt;length:int:opt;", "returns": "clip:vnode:all;"},
+        {"name": "BlankClip", "signature": "clip:vnode:all:opt;width:int:opt;height:int:opt;length:int:opt;", "returns": "clip:vnode:all;"},
+        {"name": "SetFrameProps", "signature": "clip:vnode:all;any", "returns": "clip:vnode:all;"},
+        {"name": "Splice", "signature": "clips:vnode[]:all;mismatch:int:opt;", "returns": "clip:vnode:all;"},
+        {"name": "LoadPlugin", "signature": "path:data;altsearchpath:int:opt;forcens:data:opt;forceid:data:opt;", "returns": ""}
+      ]
+    },
+    {
+      "namespace": "resize",
+      "identifier": "com.vapoursynth.resize",
+      "name": "VapourSynth Resize",
+      "functions": [
+        {"name": "Bicubic", "signature": "clip:vnode:all;width:int:opt;height:int:opt;format:int:opt;matrix_in:int:opt;", "returns": "clip:vnode:all;"}
+      ]
+    },
+    {
+      "namespace": "kw",
+      "identifier": "example.keywords",
+      "name": "A plugin with a Python-keyword parameter",
+      "functions": [
+        {"name": "Weigh", "signature": "clip:vnode:all;lambda:float;", "returns": "clip:vnode:all;"}
+      ]
+    }
+  ]
+}
