@@ -5,10 +5,12 @@ interpreter so that VapourLint itself never imports VapourSynth and a
 crashing plugin cannot take it down. Interpreters are tried in order:
 
 1. an explicit ``--python`` path;
-2. the ``VAPOURLINT_PYTHON`` environment variable (an application that
-   manages its own VapourSynth environment sets this);
+2. the ``VAPOURLINT_PYTHON`` environment variable, an explicit override;
 3. the interpreter running VapourLint, if it can import vapoursynth;
 4. ``python3`` on PATH.
+
+A native installation is preferred over an application-managed one; the
+managed environment becomes the last fallback once it has a known location.
 
 A catalog can also be loaded from JSON written earlier, which is how CI
 machines without VapourSynth and the tests use it.
