@@ -68,10 +68,10 @@ episode.vpy:9:7: warning: range-literal: _Range=1 means full: _Range is numbered
 
 | Rule | Severity | Finds |
 |---|---|---|
-| `callback-signature` | error | a `std.ModifyFrame` selector that cannot take the keywords `n` and `f`, or a `std.FrameEval` eval that cannot take `n` (and `f` with `prop_src`). These fail only when a frame is rendered |
+| `callback-signature` | error | a `std.ModifyFrame` selector that cannot take the keywords `n` and `f`, or a `std.FrameEval` eval that cannot take `n` (and `f` with `prop_src`). These fail only when a frame is rendered. Lambdas, functions defined in the script and `functools.partial` of them are checked; bound methods and imported functions are not |
 | `late-global` | warning | a frame callback that reads a module-level name the script assigns again later: frames render after the script finishes, so every frame sees the later value |
 | `range-literal` | warning | `_Range` set to a bare 0 or 1. `_Range` is numbered the other way from the deprecated `_ColorRange` (0 = limited); write `vs.RANGE_LIMITED` or `vs.RANGE_FULL` |
-| `replace-ranges-convention` | warning | `replace_ranges` or `rfs` without `exclusive=`: its default is inclusive and can be switched process-wide |
+| `replace-ranges-convention` | info | vstools' `replace_ranges` or `rfs` without `exclusive=`: its default is inclusive and can be switched process-wide. Other libraries' `rfs` (fvsfunc, awsmfunc, older lvsfunc) has no such parameter and is not flagged |
 | `deprecated-prop` | info | `_ColorRange`, which VapourSynth translates to `_Range` |
 
 **Catalog rules** check every plugin call against the installed plugins'

@@ -80,7 +80,7 @@ def test_colorrange_is_info_only():
 
 def test_replace_ranges_without_exclusive():
     source = "from vstools import replace_ranges\nout = replace_ranges(clip, clip, [(0, 10)])\n"
-    assert found(source) == [(5, "replace-ranges-convention", "warning")]
+    assert found(source) == [(5, "replace-ranges-convention", "info")]
 
 
 def test_replace_ranges_with_exclusive_passes():
@@ -113,3 +113,24 @@ def test_info_findings_do_not_fail_the_run(tmp_path, capsys, monkeypatch):
     script.write_text(HEADER + "clip = core.std.SetFrameProps(clip, _ColorRange=1)\n")
     assert main(["check", str(script)]) == 0
     assert "info: deprecated-prop" in capsys.readouterr().out
+
+
+def test_replace_ranges_through_a_vstools_alias():
+    assert found("import vstools as vst\nout = vst.rfs(clip, clip, [(0, 10)])\n") == [(5, "replace-ranges-convention", "info")]
+
+
+def test_other_libraries_rfs_is_not_flagged():
+    # fvsfunc, awsmfunc and older lvsfunc have an rfs with no exclusive parameter.
+    for module in ("fvsfunc as fvf", "awsmfunc as awf", "lvsfunc as lvf"):
+        alias = module.split()[-1]
+        assert found(f"import {module}\nout = {alias}.rfs(clip, clip, '[0 10]')\n") == []
+    assert found("from fvsfunc import rfs\nout = rfs(clip, clip, '[0 10]')\n") == []
+
+
+def test_callbacks_through_functools_partial():
+    good = "from functools import partial\ndef pick(n, f, clip):\n    return clip\nout = core.std.FrameEval(clip, partial(pick, clip=clip), prop_src=clip)\n"
+    assert found(good) == []
+    missing_f = "from functools import partial\ndef pick(n, clip):\n    return clip\nout = core.std.FrameEval(clip, partial(pick, clip=clip), prop_src=clip)\n"
+    assert found(missing_f) == [(7, "callback-signature", "error")]
+    unbound = "import functools\ndef pick(n, clip):\n    return clip\nout = core.std.FrameEval(clip, functools.partial(pick))\n"
+    assert found(unbound) == [(7, "callback-signature", "error")]

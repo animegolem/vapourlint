@@ -11,9 +11,10 @@
   the other way from the deprecated ``_ColorRange`` (0 = limited), so write
   ``vs.RANGE_LIMITED`` or ``vs.RANGE_FULL``.
 - ``deprecated-prop`` (info): ``_ColorRange``, which VapourSynth translates to ``_Range``.
-- ``replace-ranges-convention`` (warning): ``replace_ranges`` (or ``rfs``) without
-  ``exclusive=``. Its default is inclusive, and the default is a process-wide switch
-  any imported script can flip.
+- ``replace-ranges-convention`` (info): vstools' ``replace_ranges`` (or its ``rfs``)
+  without ``exclusive=``. Its default is inclusive, and the default is a process-wide
+  switch any imported script can flip. Other libraries' ``rfs`` (fvsfunc, awsmfunc,
+  older lvsfunc) have no such parameter and are not flagged.
 """
 
 from __future__ import annotations
@@ -23,17 +24,19 @@ import builtins
 
 from .diagnostics import Diagnostic
 from .manifest import call_sites
+from .parsing import parse
 
 # std function -> (callback keyword, its positional index in core form)
 CALLBACKS = {"ModifyFrame": ("selector", 2), "FrameEval": ("eval", 1), "Lut": ("function", 4), "Lut2": ("function", 5)}
 SIGNATURES = {"ModifyFrame": ("n", "f"), "FrameEval": ("n",)}
 RANGE_HELPERS = {"replace_ranges", "rfs"}
+VSTOOLS = {"vstools", "vsjetpack"}
 BUILTINS = set(dir(builtins))
 
 
 def static_diagnostics(source: str, filename: str = "<script>") -> list[Diagnostic]:
     """Raises SyntaxError for invalid Python."""
-    tree = ast.parse(source, filename=filename)
+    tree = parse(source, filename)
     rules = _Rules(source.splitlines(), tree, {(s.call.line, s.offset) for s in call_sites(source, filename)})
     rules.visit(tree)
     return rules.found
@@ -45,6 +48,7 @@ class _Rules(ast.NodeVisitor):
         self.core_calls = core_calls
         self.defs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
         self.assigned = _module_assignments(tree)
+        self.vstools_names, self.vstools_modules = _vstools_bindings(tree)
         self.found: list[Diagnostic] = []
 
     def add(self, node: ast.AST, code: str, message: str, severity: str = "error") -> None:
@@ -57,14 +61,19 @@ class _Rules(ast.NodeVisitor):
                 self._callback(node, func.attr)
             if func.attr in {"SetFrameProps", "SetFrameProp"}:
                 self._props_call(node)
-        name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
-        if name in RANGE_HELPERS and not any(k.arg == "exclusive" for k in node.keywords):
+        from_vstools = (isinstance(func, ast.Name) and func.id in self.vstools_names) or (
+            isinstance(func, ast.Attribute)
+            and func.attr in RANGE_HELPERS
+            and isinstance(func.value, ast.Name)
+            and func.value.id in self.vstools_modules
+        )
+        if from_vstools and not any(k.arg == "exclusive" for k in node.keywords):
             self.add(
                 node,
                 "replace-ranges-convention",
-                f"{name} defaults to inclusive ranges, and that default can be switched process-wide; "
-                "pass exclusive= explicitly",
-                "warning",
+                "vstools' replace_ranges is inclusive by default, and that default can be switched process-wide; "
+                "pass exclusive= to make the convention explicit",
+                "info",
             )
         self.generic_visit(node)
 
@@ -119,6 +128,10 @@ class _Rules(ast.NodeVisitor):
         callback = given.get(keyword)
         if callback is None and 0 <= position < len(node.args):
             callback = node.args[position]
+        bound: tuple[int, set[str]] = (0, set())  # what functools.partial already supplies
+        if isinstance(callback, ast.Call) and _is_partial(callback.func) and callback.args:
+            bound = (len(callback.args) - 1, {k.arg for k in callback.keywords if k.arg})
+            callback = callback.args[0]
         target = callback if isinstance(callback, ast.Lambda) else None
         if isinstance(callback, ast.Name):
             target = self.defs.get(callback.id)
@@ -127,10 +140,12 @@ class _Rules(ast.NodeVisitor):
         if function in SIGNATURES:
             prop_src = "prop_src" in given or len(node.args) > (1 if method else 2)
             required = SIGNATURES[function] + (("f",) if function == "FrameEval" and prop_src else ())
-            self._signature(node, function, keyword, target, required)
+            self._signature(node, function, keyword, target, required, bound)
         self._late_globals(node, target)
 
-    def _signature(self, node: ast.Call, function: str, keyword: str, target, required: tuple[str, ...]) -> None:
+    def _signature(
+        self, node: ast.Call, function: str, keyword: str, target, required: tuple[str, ...], bound: tuple[int, set[str]]
+    ) -> None:
         args = target.args
         takes_any = args.kwarg is not None
         keywordable = [a.arg for a in args.args + args.kwonlyargs]
@@ -139,6 +154,9 @@ class _Rules(ast.NodeVisitor):
         positional = args.posonlyargs + args.args
         without_default = [a.arg for a in positional[: len(positional) - len(args.defaults)]]
         without_default += [a.arg for a, d in zip(args.kwonlyargs, args.kw_defaults) if d is None]
+        skipped, named = bound  # partial's leading positionals and keywords are already supplied
+        supplied = {a.arg for a in positional[:skipped]} | named
+        without_default = [name for name in without_default if name not in supplied]
         unexpected = [name for name in without_default if name not in required]
         if missing or unexpected:
             takes = ", ".join(a.arg for a in args.posonlyargs + args.args + args.kwonlyargs)
@@ -193,3 +211,24 @@ def _module_assignments(tree: ast.Module) -> dict[str, list[int]]:
 
     walk(tree)
     return {name: sorted(found) for name, found in lines.items()}
+
+
+def _is_partial(func: ast.expr) -> bool:
+    return (isinstance(func, ast.Name) and func.id == "partial") or (
+        isinstance(func, ast.Attribute) and func.attr == "partial"
+    )
+
+
+def _vstools_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
+    """Names bound to vstools' range helpers, and names bound to the vstools module itself."""
+    names, modules = set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in VSTOOLS:
+            for alias in node.names:
+                if alias.name in RANGE_HELPERS:
+                    names.add(alias.asname or alias.name)
+                elif alias.name == "*":
+                    names |= RANGE_HELPERS
+        elif isinstance(node, ast.Import):
+            modules |= {a.asname or a.name for a in node.names if a.name.split(".")[0] in VSTOOLS}
+    return names, modules

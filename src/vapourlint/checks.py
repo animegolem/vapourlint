@@ -38,18 +38,19 @@ def check(
 
 def catalog_diagnostics(source: str, catalog: Catalog, filename: str = "<script>") -> list[Diagnostic]:
     found: list[Diagnostic] = []
+    where_from = f" (VapourSynth R{catalog.vapoursynth})" if catalog.vapoursynth else ""
     for site in call_sites(source, filename, catalog):
         call = site.call
         where = (call.line, call.column)
         function = catalog.get(call.namespace, call.function)
         if function is None:
             if call.form == "core" and call.namespace in catalog.namespaces:
-                found.append(Diagnostic(*where, "unknown-function", f"{call.namespace} has no function {call.function}"))
+                found.append(Diagnostic(*where, "unknown-function", f"{call.namespace} has no function {call.function}{where_from}"))
             continue
         if not function.accepts_any:
             for name in site.keywords:
                 if function.param(name) is None:
-                    found.append(Diagnostic(*where, "unknown-argument", f"{call.name} has no argument {name!r}"))
+                    found.append(Diagnostic(*where, "unknown-argument", f"{call.name} has no argument {name!r}{where_from}"))
         if site.starred:
             continue
         offset = 1 if call.form == "method" else 0
@@ -57,5 +58,5 @@ def catalog_diagnostics(source: str, catalog: Catalog, filename: str = "<script>
         supplied.update(p.name for name in site.keywords if (p := function.param(name)) is not None)
         missing = [p.python_name for p in function.params if not p.optional and p.name not in supplied]
         if missing:
-            found.append(Diagnostic(*where, "missing-argument", f"{call.name} needs {', '.join(missing)}"))
+            found.append(Diagnostic(*where, "missing-argument", f"{call.name} needs {', '.join(missing)}{where_from}"))
     return found

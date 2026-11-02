@@ -23,6 +23,7 @@ from .catalog import Catalog, CatalogUnavailable, discover_data
 from .checks import check
 from .graph_rules import graph_diagnostics
 from .manifest import Manifest, analyze
+from .parsing import parse
 
 FAILED = 2
 
@@ -176,7 +177,7 @@ def _check(args: argparse.Namespace) -> int:
 def _graph(args: argparse.Namespace) -> int:
     source = _read(args.script)
     try:
-        compile(source, str(args.script), "exec")
+        parse(source, str(args.script))
     except SyntaxError as error:
         raise _syntax(args.script, error) from None
     record = _graph_record(args, _graph_python(args, None))

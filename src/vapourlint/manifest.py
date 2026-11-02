@@ -18,6 +18,8 @@ import ast
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from .parsing import parse
+
 if TYPE_CHECKING:
     from .catalog import Catalog
 
@@ -88,7 +90,7 @@ def call_sites(source: str, filename: str = "<script>", catalog: Catalog | None 
 
 def _visit(source: str, filename: str, catalog: Catalog | None) -> _Visitor:
     visitor = _Visitor(source.splitlines(), catalog)
-    visitor.visit(ast.parse(source, filename=filename))
+    visitor.visit(parse(source, filename))
     return visitor
 
 

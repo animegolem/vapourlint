@@ -21,6 +21,7 @@ from typing import Any
 
 from .diagnostics import Diagnostic
 from .graph import DEFAULTS, FIELDS, declared_fields
+from .parsing import parse
 
 COLORSPACE = "no path between colorspaces"
 
@@ -87,7 +88,7 @@ def _maybe_assumed(line: int, lines: list[str], code: str, text: str, assumed: b
 def _slices(source: str, record: dict[str, Any], lines: list[str], filename: str) -> list[Diagnostic]:
     """Literal slice ends past the length of the clip the name held before that line."""
     found = []
-    for node in ast.walk(ast.parse(source, filename)):
+    for node in ast.walk(parse(source, filename)):
         if not (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and isinstance(node.slice, ast.Slice)):
             continue
         upper = node.slice.upper
