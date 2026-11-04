@@ -10,8 +10,8 @@ from vapourlint.checks import check
 from vapourlint.cli import main
 from vapourlint.graph_rules import graph_diagnostics
 
-ENGINE_PYTHON = Path(__file__).parents[2] / "engine" / ".venv" / "bin" / "python"
-needs_engine = pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs the engine environment (uv sync in engine/)")
+from conftest import ENGINE_PYTHON
+needs_engine = pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs VAPOURLINT_TEST_PYTHON (a Python with VapourSynth)")
 HEADER = "import vapoursynth as vs\nfrom vapoursynth import core\n"
 
 

@@ -181,6 +181,19 @@ vapourlint check script.vpy --catalog catalog.json
 - **Capability manifest:** files, network, models and plugins a script
   needs, for review before running it.
 
+## Development
+
+```sh
+uv run pytest
+```
+
+Tests that need VapourSynth skip unless `VAPOURLINT_TEST_PYTHON` names a
+Python that can import it.
+
+Releases are published to PyPI by GitHub Actions when a `v*` tag matching
+the package version is pushed, through PyPI Trusted Publishing; no API
+token exists.
+
 ## License
 
 MIT.

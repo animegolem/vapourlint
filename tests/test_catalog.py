@@ -5,7 +5,7 @@ import pytest
 from vapourlint.catalog import Catalog, CatalogUnavailable, parse_signature, probe
 
 FIXTURE = Path(__file__).parent / "fixtures" / "catalog.json"
-ENGINE_PYTHON = Path(__file__).parents[2] / "engine" / ".venv" / "bin" / "python"
+from conftest import ENGINE_PYTHON
 
 
 def test_parse_signature_types_flags_and_arrays():
@@ -56,7 +56,7 @@ def test_interpreter_without_vapoursynth_is_explained(tmp_path):
         probe(fake)
 
 
-@pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs the engine environment (uv sync in engine/)")
+@pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs VAPOURLINT_TEST_PYTHON (a Python with VapourSynth)")
 def test_real_probe_matches_vapoursynth():
     catalog = Catalog.from_json(probe(ENGINE_PYTHON))
     assert catalog.vapoursynth and catalog.vapoursynth >= 81

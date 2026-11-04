@@ -9,7 +9,7 @@ from vapourlint.cli import main
 from vapourlint.manifest import analyze
 
 FIXTURE = Path(__file__).parent / "fixtures" / "catalog.json"
-ENGINE_PYTHON = Path(__file__).parents[2] / "engine" / ".venv" / "bin" / "python"
+from conftest import ENGINE_PYTHON
 HEADER = "from vapoursynth import core\nclip = core.std.BlankClip()\n"
 
 
@@ -133,7 +133,7 @@ def test_cli_without_any_catalog_fails_clearly(tmp_path, capsys):
     assert "no VapourSynth catalog" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs the engine environment (uv sync in engine/)")
+@pytest.mark.skipif(not ENGINE_PYTHON.exists(), reason="needs VAPOURLINT_TEST_PYTHON (a Python with VapourSynth)")
 def test_cli_against_the_real_core(tmp_path, capsys):
     script = tmp_path / "real.vpy"
     script.write_text(HEADER + "clip = clip.std.Trim(frist=0)\nclip = core.resize.Bicubic(clip, 640, 360)\n")

@@ -1,0 +1,48 @@
+# Publish to PyPI when a tag like v0.1.0 is pushed.
+#
+# Uses PyPI Trusted Publishing: PyPI is told once (on pypi.org, under the
+# project's publishing settings) to trust this workflow in this repository, and
+# GitHub proves the workflow's identity on every run. No API token is created,
+# stored or passed anywhere.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: The tag matches the package version
+        run: |
+          version=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          test "v$version" = "$GITHUB_REF_NAME" || {
+            echo "tag $GITHUB_REF_NAME does not match pyproject.toml version $version"; exit 1; }
+      - name: Test
+        run: uv run pytest -q
+      - name: Build
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # Trusted Publishing's identity proof; nothing else
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
