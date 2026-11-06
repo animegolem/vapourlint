@@ -1,5 +1,10 @@
 # VapourLint
 
+> **Alpha. Use is not currently recommended.** Rules, output and command
+> options may change between releases, and findings have not yet been
+> checked by encoders outside the project. Try it, report what it gets
+> wrong, but do not rely on it in a pipeline yet.
+
 A static analyzer for [VapourSynth](https://www.vapoursynth.com) scripts.
 
 Today a script's mistakes surface when it runs: a clip in the wrong
@@ -7,9 +12,8 @@ format, a missing color matrix, a frame range that is off by one. Generic
 Python linters see neither plugins nor clip formats. VapourLint checks a
 script using what VapourSynth itself knows.
 
-**Status: early.** 0.1 has `manifest`, `check`, `catalog` and `graph`. The
-checks listed
-under *Planned* do not exist yet.
+**Status: alpha.** 0.1 has `manifest`, `check`, `catalog` and `graph`. The
+checks listed under *Planned* do not exist yet.
 
 ## Install
 
