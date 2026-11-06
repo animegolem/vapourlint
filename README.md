@@ -7,8 +7,8 @@ format, a missing color matrix, a frame range that is off by one. Generic
 Python linters see neither plugins nor clip formats. VapourLint checks a
 script using what VapourSynth itself knows.
 
-**Status: early.** The released 0.0.1 has the `manifest` command. The
-development version adds `check`, `catalog` and `graph`. The checks listed
+**Status: early.** 0.1 has `manifest`, `check`, `catalog` and `graph`. The
+checks listed
 under *Planned* do not exist yet.
 
 ## Install
